@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsApp Bulk Messenger</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <!-- Socket.IO client served by the Express server -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+<!-- ══════════════════════  HEADER  ══════════════════════ -->
+<header class="app-header">
+  <div class="header-brand">
+    <span class="brand-icon">📱</span>
+    <span class="brand-name">WhatsApp Bulk Messenger</span>
+  </div>
+  <div class="header-status">
+    <span id="socketDot" class="dot dot--offline" title="Server connection"></span>
+    <span id="socketLabel" class="status-label">Connecting…</span>
+  </div>
+</header>
+
+<!-- ══════════════════════  MAIN  ════════════════════════ -->
+<main class="layout">
+
+  <!-- ─── LEFT COLUMN ─── -->
+  <div class="col-left">
+
+    <!-- WhatsApp Connection Card -->
+    <section class="card" id="whatsappCard">
+      <div class="card-header">
+        <h2>WhatsApp Connection</h2>
+        <span id="waBadge" class="badge badge--disconnected">Disconnected</span>
+      </div>
+      <div class="card-body">
+        <!-- Login method tabs -->
+        <div class="login-tabs">
+          <button id="tabQR"    class="tab-btn tab-btn--active" onclick="switchTab('qr')">📷 Scan QR Code</button>
+          <button id="tabPhone" class="tab-btn"                 onclick="switchTab('phone')">📱 Link via Phone Number</button>
+        </div>
+
+        <!-- QR tab content -->
+        <div id="tabContentQR">
+          <div id="qrSection" class="qr-wrapper hidden">
+            <p class="hint">Open WhatsApp → <strong>Linked Devices</strong> → scan code below</p>
+            <img id="qrImage" src="" alt="QR Code" class="qr-image" />
+          </div>
+        </div>
+
+        <!-- Phone number tab content -->
+        <div id="tabContentPhone" class="hidden">
+          <p class="hint" style="margin-bottom:10px">
+            Enter your WhatsApp number with country code.<br/>
+            A <strong>8-digit pairing code</strong> will appear — enter it on your phone under<br/>
+            <em>WhatsApp → Linked Devices → Link with phone number</em>.
+          </p>
+          <div class="phone-input-row">
+            <input
+              type="tel"
+              id="phoneInput"
+              class="phone-input"
+              placeholder="e.g. 919876543210"
+              maxlength="15"
+            />
+            <button class="btn btn--primary" id="btnPhoneConnect" onclick="connectWithPhone()">Get Code</button>
+          </div>
+          <!-- Pairing code display -->
+          <div id="pairingCodeBox" class="pairing-code-box hidden">
+            <p class="hint">Enter this code on WhatsApp within 60 seconds:</p>
+            <div id="pairingCodeDisplay" class="pairing-code-digits"></div>
+          </div>
+        </div>
+
+        <div id="connectedSection" class="connected-banner hidden">
+          <span class="success-icon">✅</span>
+          <span>WhatsApp is connected and ready.</span>
+        </div>
+        <div id="connectingSection" class="connecting-banner hidden">
+          <div class="spinner"></div>
+          <span id="connectingMsg">Initialising…</span>
+        </div>
+        <div class="card-actions">
+          <button id="btnConnect"    class="btn btn--primary"  onclick="connectWhatsApp()">Connect</button>
+          <button id="btnDisconnect" class="btn btn--danger hidden" onclick="disconnectWhatsApp()">Disconnect</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Excel Upload Card -->
+    <section class="card" id="uploadCard">
+      <div class="card-header">
+        <h2>Upload Contacts (Excel / CSV)</h2>
+        <span id="contactsBadge" class="badge badge--neutral">0 contacts</span>
+      </div>
+      <div class="card-body">
+        <div
+          id="dropZone"
+          class="drop-zone"
+          ondragover="onDragOver(event)"
+          ondragleave="onDragLeave(event)"
+          ondrop="onDrop(event)"
+          onclick="document.getElementById('fileInput').click()"
+        >
+          <span class="drop-icon">📂</span>
+          <p>Drag & drop your file here<br/>or <strong>click to browse</strong></p>
+          <p class="hint">.xlsx · .xls · .csv — max 10 MB</p>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadFile(this.files[0])"/>
+
+        <div id="uploadProgress" class="hidden">
+          <div class="progress-bar-wrap">
+            <div id="uploadBar" class="progress-bar" style="width:0%"></div>
+          </div>
+          <p id="uploadMsg" class="hint center">Uploading…</p>
+        </div>
+
+        <!-- Contacts preview table -->
+        <div id="previewSection" class="hidden">
+          <p id="previewLabel" class="hint center"></p>
+          <div class="table-scroll">
+            <table id="previewTable" class="data-table">
+              <thead><tr><th>#</th><th>Name</th><th>Phone</th></tr></thead>
+              <tbody id="previewBody"></tbody>
+            </table>
+          </div>
+          <button class="btn btn--ghost btn--sm" onclick="clearContacts()">✕ Clear contacts</button>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /col-left -->
+
+  <!-- ─── RIGHT COLUMN ─── -->
+  <div class="col-right">
+
+    <!-- Message Template Card -->
+    <section class="card" id="templateCard">
+      <div class="card-header">
+        <h2>Message Template</h2>
+        <span class="hint">Use <code>{name}</code> for the contact's name</span>
+      </div>
+      <div class="card-body">
+        <textarea
+          id="templateInput"
+          class="template-textarea"
+          rows="8"
+          placeholder="Hello {name},&#10;&#10;We help businesses automate their marketing with AI tools.&#10;&#10;Let me know if you're interested!"
+          oninput="updatePreview()"
+        ></textarea>
+        <div class="preview-box hidden" id="previewBox">
+          <strong>Preview:</strong>
+          <pre id="previewText"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats + Control Card -->
+    <section class="card" id="statsCard">
+      <div class="card-header">
+        <h2>Campaign Control</h2>
+      </div>
+      <div class="card-body">
+        <!-- Stat counters -->
+        <div class="stats-grid">
+          <div class="stat-box stat-box--total">
+            <span class="stat-number" id="statTotal">0</span>
+            <span class="stat-label">Total</span>
+          </div>
+          <div class="stat-box stat-box--sent">
+            <span class="stat-number" id="statSent">0</span>
+            <span class="stat-label">Sent</span>
+          </div>
+          <div class="stat-box stat-box--failed">
+            <span class="stat-number" id="statFailed">0</span>
+            <span class="stat-label">Failed</span>
+          </div>
+          <div class="stat-box stat-box--skipped">
+            <span class="stat-number" id="statSkipped">0</span>
+            <span class="stat-label">Skipped</span>
+          </div>
+        </div>
+
+        <!-- Overall progress bar -->
+        <div class="progress-bar-wrap mt-8" id="overallProgressWrap" style="display:none">
+          <div id="overallBar" class="progress-bar progress-bar--sending" style="width:0%"></div>
+        </div>
+        <p id="overallProgressLabel" class="hint center mt-4" style="display:none"></p>
+        <p id="waitingLabel" class="hint center mt-4 waiting-label" style="display:none"></p>
+
+        <!-- Action buttons -->
+        <div class="card-actions mt-12">
+          <button id="btnSend"  class="btn btn--success btn--lg" onclick="startSending()">▶ Start Sending</button>
+          <button id="btnStop"  class="btn btn--warning btn--lg hidden" onclick="stopSending()">⏹ Stop</button>
+          <button id="btnReset" class="btn btn--ghost btn--sm" onclick="resetSession()" title="Allow re-sending to the same numbers">↺ Reset session</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Activity Log Card -->
+    <section class="card" id="logCard">
+      <div class="card-header">
+        <h2>Activity Log</h2>
+        <button class="btn btn--ghost btn--sm" onclick="clearLog()">Clear</button>
+      </div>
+      <div class="card-body no-pad">
+        <div class="table-scroll table-scroll--log">
+          <table class="data-table">
+            <thead>
+              <tr><th>Time</th><th>Name</th><th>Phone</th><th>Status</th><th>Note</th></tr>
+            </thead>
+            <tbody id="logBody">
+              <tr id="logEmpty"><td colspan="5" class="center hint">No activity yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /col-right -->
+
+</main>
+
+<!-- ══════════════════════  TOAST  ══════════════════════ -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
