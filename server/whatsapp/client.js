@@ -17,11 +17,43 @@ function resolveAuthPath() {
   const configured = process.env.WHATSAPP_AUTH_DIR;
   if (configured) return path.resolve(configured);
 
-  if (process.env.RENDER && process.env.RENDER_DISK_PATH) {
-    return path.join(process.env.RENDER_DISK_PATH, '.wwebjs_auth');
+  if (process.env.RENDER) {
+    const renderBase = process.env.RENDER_DISK_PATH || '/var/data';
+    return path.join(renderBase, '.wwebjs_auth');
   }
 
   return path.resolve(process.cwd(), '.wwebjs_auth');
+}
+
+function resolveCachePath() {
+  const configured = process.env.WHATSAPP_CACHE_DIR;
+  if (configured) return path.resolve(configured);
+
+  if (process.env.RENDER) {
+    const renderBase = process.env.RENDER_DISK_PATH || '/var/data';
+    return path.join(renderBase, '.wwebjs_cache');
+  }
+
+  return path.resolve(process.cwd(), '.wwebjs_cache');
+}
+
+function resetRuntimeState() {
+  clientStatus  = 'disconnected';
+  qrCodeDataURL = null;
+  _pairingCode  = null;
+  _pairingPhone = null;
+}
+
+function clearWhatsAppStorage() {
+  const targets = [resolveAuthPath(), resolveCachePath()];
+  for (const target of targets) {
+    try {
+      fs.rmSync(target, { recursive: true, force: true });
+      console.log(`[whatsapp] cleared session data → ${target}`);
+    } catch (err) {
+      console.warn(`[whatsapp] failed to clear session data ${target} → ${err.message}`);
+    }
+  }
 }
 
 function resolveExecutablePath() {
@@ -104,19 +136,34 @@ function initializeClient(io) {
   _io = io;
 
   if (whatsappClient) {
-    console.log('[whatsapp] client already initialised – skipping');
-    return;
+    if (clientStatus === 'connected' || clientStatus === 'connecting' || clientStatus === 'qr_ready' || clientStatus === 'pairing_ready') {
+      console.log(`[whatsapp] client already initialised – status ${clientStatus}`);
+      _io && _io.emit('status', { status: clientStatus, message: 'WhatsApp session is already active.' });
+      return;
+    }
+
+    try {
+      whatsappClient.destroy().catch(() => {});
+    } catch (_) { /* ignore */ }
+    whatsappClient = null;
   }
 
   const authPath = resolveAuthPath();
+  const cachePath = resolveCachePath();
   fs.mkdirSync(authPath, { recursive: true });
+  fs.mkdirSync(cachePath, { recursive: true });
 
   whatsappClient = new Client({
     authStrategy: new LocalAuth({ dataPath: authPath }),
+    webVersionCache: {
+      type: 'local',
+      path: path.join(cachePath, 'web-version-cache.html'),
+    },
     puppeteer: buildPuppeteerConfig(),
   });
 
   console.log(`[whatsapp] auth path → ${authPath}`);
+  console.log(`[whatsapp] cache path → ${cachePath}`);
   const executablePath = resolveExecutablePath();
   if (executablePath) {
     console.log(`[whatsapp] browser path → ${executablePath}`);
@@ -177,21 +224,17 @@ function initializeClient(io) {
 
   whatsappClient.on('auth_failure', (msg) => {
     console.error('[whatsapp] auth_failure –', msg);
-    clientStatus  = 'disconnected';
-    qrCodeDataURL = null;
-    _pairingCode  = null;
-    _pairingPhone = null;
+    resetRuntimeState();
     whatsappClient = null;
+    clearWhatsAppStorage();
     _io && _io.emit('status', { status: 'disconnected', message: 'Authentication failed. Please reconnect.' });
   });
 
   whatsappClient.on('disconnected', (reason) => {
     console.warn('[whatsapp] disconnected –', reason);
-    clientStatus  = 'disconnected';
-    qrCodeDataURL = null;
-    _pairingCode  = null;
-    _pairingPhone = null;
+    resetRuntimeState();
     whatsappClient = null;
+    clearWhatsAppStorage();
     _io && _io.emit('status', { status: 'disconnected', message: 'WhatsApp disconnected.' });
   });
 
@@ -200,7 +243,7 @@ function initializeClient(io) {
   whatsappClient.initialize().catch((err) => {
     console.error('[whatsapp] initialize error –', err.message);
     if (err?.stack) console.error(err.stack);
-    clientStatus   = 'disconnected';
+    resetRuntimeState();
     whatsappClient = null;
     _io && _io.emit('status', { status: 'disconnected', message: `Failed to start: ${err.message}` });
   });
@@ -209,17 +252,17 @@ function initializeClient(io) {
 /**
  * Gracefully destroy the current client (clears puppeteer).
  */
-async function destroyClient() {
+async function destroyClient(options = {}) {
+  const { clearSession = true } = options;
+
   if (whatsappClient) {
     try {
       await whatsappClient.destroy();
     } catch (_) { /* ignore */ }
     whatsappClient = null;
   }
-  clientStatus  = 'disconnected';
-  qrCodeDataURL = null;
-  _pairingCode  = null;
-  _pairingPhone = null;
+  resetRuntimeState();
+  if (clearSession) clearWhatsAppStorage();
   _io && _io.emit('status', { status: 'disconnected', message: 'Disconnected.' });
 }
 

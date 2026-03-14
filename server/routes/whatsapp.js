@@ -38,8 +38,8 @@ router.post('/connect-phone', (req, res) => {
 // POST /api/whatsapp/disconnect
 router.post('/disconnect', async (_req, res) => {
   try {
-    await destroyClient();
-    res.json({ message: 'Disconnected' });
+    await destroyClient({ clearSession: true });
+    res.json({ message: 'Disconnected and session cleared' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
