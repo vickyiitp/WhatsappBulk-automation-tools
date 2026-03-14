@@ -4,6 +4,7 @@
   "description": "WhatsApp Bulk Messenger – send personalized messages to contacts from an Excel sheet",
   "main": "server/index.js",
   "scripts": {
+    "postinstall": "node -e \"if(process.env.RENDER){require('child_process').execSync('npx puppeteer browsers install chrome',{stdio:'inherit'})}\"",
     "start": "node server/index.js",
     "dev": "nodemon server/index.js"
   },

@@ -23,8 +23,30 @@ function resolveAuthPath() {
   return path.resolve(process.cwd(), '.wwebjs_auth');
 }
 
+function resolveExecutablePath() {
+  const configured = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
+  if (configured) return configured;
+
+  try {
+    const puppeteer = require('puppeteer');
+    const resolved = puppeteer.executablePath();
+    if (resolved && fs.existsSync(resolved)) return resolved;
+  } catch (_) {
+    // Fall through to common Linux paths below.
+  }
+
+  const candidates = [
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
 function buildPuppeteerConfig() {
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
+  const executablePath = resolveExecutablePath();
 
   return {
     headless: process.env.PUPPETEER_HEADLESS === 'false' ? false : true,
@@ -68,8 +90,9 @@ function initializeClient(io) {
   });
 
   console.log(`[whatsapp] auth path → ${authPath}`);
-  if (process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN) {
-    console.log(`[whatsapp] browser path → ${process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN}`);
+  const executablePath = resolveExecutablePath();
+  if (executablePath) {
+    console.log(`[whatsapp] browser path → ${executablePath}`);
   }
 
   // ── Events ────────────────────────────────────────────────────────────────

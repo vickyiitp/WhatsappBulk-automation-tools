@@ -236,6 +236,30 @@ PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 WHATSAPP_AUTH_DIR=/var/data/.wwebjs_auth
 ```
 
+### If you already created a plain Node Render service
+
+Your current logs indicate this is what happened. In that case, update the service manually:
+
+1. Set **Build Command** to:
+
+```bash
+npm install
+```
+
+The repository `postinstall` hook will automatically run `npx puppeteer browsers install chrome` on Render.
+
+2. Set these environment variables:
+
+```env
+NODE_ENV=production
+DEFAULT_COUNTRY_CODE=91
+PUPPETEER_CACHE_DIR=/opt/render/.cache/puppeteer
+WHATSAPP_AUTH_DIR=/var/data/.wwebjs_auth
+```
+
+3. Attach a persistent disk and mount it at `/var/data`.
+4. Redeploy the service.
+
 ### Why initialization fails on Render without this setup
 
 - Chromium is not guaranteed to exist in a plain Node runtime.
