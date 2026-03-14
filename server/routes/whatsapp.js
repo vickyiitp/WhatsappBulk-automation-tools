@@ -13,26 +13,36 @@ router.get('/status', (_req, res) => {
 
 // POST /api/whatsapp/connect  (QR mode)
 router.post('/connect', (req, res) => {
-  const { io } = req.app.locals;
-  initializeClient(io);
-  res.json({ message: 'Connecting…' });
+  try {
+    const { io } = req.app.locals;
+    initializeClient(io);
+    res.json({ message: 'Connecting…' });
+  } catch (err) {
+    console.error('[whatsapp] sync connect error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/whatsapp/connect-phone  (pairing-code mode)
 // Body: { phone: "919876543210" }
 router.post('/connect-phone', (req, res) => {
-  const { phone } = req.body;
-  if (!phone) return res.status(400).json({ error: 'Phone number is required.' });
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Phone number is required.' });
 
-  const cleaned = String(phone).replace(/\D/g, '');
-  if (cleaned.length < 10 || cleaned.length > 15) {
-    return res.status(400).json({ error: 'Enter a valid phone number with country code (e.g. 919876543210).' });
+    const cleaned = String(phone).replace(/\D/g, '');
+    if (cleaned.length < 10 || cleaned.length > 15) {
+      return res.status(400).json({ error: 'Enter a valid phone number with country code (e.g. 919876543210).' });
+    }
+
+    const { io } = req.app.locals;
+    setPairingPhone(cleaned);
+    initializeClient(io);
+    res.json({ message: 'Connecting… pairing code will be sent shortly.' });
+  } catch (err) {
+    console.error('[whatsapp] sync connect-phone error:', err);
+    res.status(500).json({ error: err.message });
   }
-
-  const { io } = req.app.locals;
-  setPairingPhone(cleaned);
-  initializeClient(io);
-  res.json({ message: 'Connecting… pairing code will be sent shortly.' });
 });
 
 // POST /api/whatsapp/disconnect

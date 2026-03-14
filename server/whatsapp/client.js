@@ -22,7 +22,7 @@ function resolveAuthPath() {
   if (configured) return path.resolve(configured);
 
   if (process.env.RENDER) {
-    const renderBase = process.env.RENDER_DISK_PATH || '/var/data';
+    const renderBase = process.env.RENDER_DISK_PATH || process.cwd();
     return path.join(renderBase, '.wwebjs_auth');
   }
 
@@ -34,7 +34,7 @@ function resolveCachePath() {
   if (configured) return path.resolve(configured);
 
   if (process.env.RENDER) {
-    const renderBase = process.env.RENDER_DISK_PATH || '/var/data';
+    const renderBase = process.env.RENDER_DISK_PATH || process.cwd();
     return path.join(renderBase, '.wwebjs_cache');
   }
 
