@@ -33,8 +33,9 @@ Send personalized WhatsApp messages to a list of contacts imported from an Excel
 8. [Configuration](#configuration)
 9. [API Reference](#api-reference)
 10. [Troubleshooting](#troubleshooting)
-11. [Contributing](#contributing)
-12. [License](#license)
+11. [Deploying on Render](#deploying-on-render)
+12. [Contributing](#contributing)
+13. [License](#license)
 
 ---
 
@@ -202,9 +203,51 @@ PORT=3000
 # Delay between messages (milliseconds)
 MIN_DELAY=5000    # 5 seconds minimum
 MAX_DELAY=10000   # 10 seconds maximum
+
+# Optional: auto-prefix local 10-digit numbers (or 0XXXXXXXXXX)
+# Example for India:
+DEFAULT_COUNTRY_CODE=91
 ```
 
 Increasing the delay reduces the risk of your WhatsApp account being flagged for spam.
+
+---
+
+## Deploying on Render
+
+This project can run on Render, but **WhatsApp Web requires a real Chromium runtime and persistent session storage**. A plain Node service without those pieces will usually fail during WhatsApp initialization.
+
+This repository now includes:
+
+- `Dockerfile` to install Chromium and required Linux libraries
+- `render.yaml` to create a Docker web service
+- persistent auth storage path at `/var/data/.wwebjs_auth`
+
+### Recommended Render setup
+
+1. Deploy using the included `render.yaml` blueprint or create a **Docker Web Service**.
+2. Attach a **persistent disk** mounted at `/var/data`.
+3. Keep these environment variables set:
+
+```env
+NODE_ENV=production
+DEFAULT_COUNTRY_CODE=91
+PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+WHATSAPP_AUTH_DIR=/var/data/.wwebjs_auth
+```
+
+### Why initialization fails on Render without this setup
+
+- Chromium is not guaranteed to exist in a plain Node runtime.
+- `LocalAuth` needs a writable persistent directory, otherwise WhatsApp login state is lost or corrupted across restarts.
+- Headless browser processes are more sensitive in container environments, so extra Puppeteer flags are required.
+
+### If Render logs still show initialization errors
+
+- Verify the service is using the `Dockerfile`, not the default Node runtime.
+- Verify `/usr/bin/chromium` exists inside the container.
+- Verify the disk is mounted and writable at `/var/data`.
+- Delete the old auth folder if the saved session is corrupted, then reconnect WhatsApp.
 
 ---
 

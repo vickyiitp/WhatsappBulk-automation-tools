@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: whatsapp-bulk-messenger
+    runtime: docker
+    plan: starter
+    autoDeploy: true
+    disk:
+      name: whatsapp-session
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DEFAULT_COUNTRY_CODE
+        value: 91
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/chromium
+      - key: WHATSAPP_AUTH_DIR
+        value: /var/data/.wwebjs_auth

@@ -20,6 +20,35 @@ function randomDelay(minMs, maxMs) {
   return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
 }
 
+function isTransientSendError(err) {
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    msg.includes('detached frame') ||
+    msg.includes('execution context was destroyed') ||
+    msg.includes('target closed') ||
+    msg.includes('session closed') ||
+    msg.includes('protocol error')
+  );
+}
+
+async function sendWithRetry(client, chatId, message, maxAttempts = 3) {
+  let lastErr;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await client.sendMessage(chatId, message);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientSendError(err) || attempt === maxAttempts) break;
+      // Brief backoff gives WhatsApp Web time to recover from internal reloads.
+      await delay(1200 * attempt);
+    }
+  }
+
+  throw lastErr;
+}
+
 /**
  * Replace {name} (and {Name}, {NAME} variants) in the template string.
  */
@@ -81,7 +110,12 @@ async function startSending(contacts, template, io, minDelay = 5000, maxDelay = 
       const chatId  = `${contact.phone}@c.us`;
       const message = personalise(template, contact.name);
 
-      await client.sendMessage(chatId, message);
+      const waNumber = await client.getNumberId(contact.phone);
+      if (!waNumber?._serialized) {
+        throw new Error('Number is not registered on WhatsApp');
+      }
+
+      await sendWithRetry(client, chatId, message);
 
       state.sent++;
       state.sentNumbers.add(contact.phone);

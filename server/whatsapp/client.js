@@ -1,6 +1,8 @@
 'use strict';
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const fs = require('fs');
+const path = require('path');
 const qrcode = require('qrcode');
 
 let whatsappClient  = null;
@@ -9,6 +11,41 @@ let qrCodeDataURL   = null;
 let _pairingCode    = null;   // 8-digit pairing code shown to user
 let _pairingPhone   = null;   // phone number requested for pairing
 let _io             = null;
+
+function resolveAuthPath() {
+  const configured = process.env.WHATSAPP_AUTH_DIR;
+  if (configured) return path.resolve(configured);
+
+  if (process.env.RENDER && process.env.RENDER_DISK_PATH) {
+    return path.join(process.env.RENDER_DISK_PATH, '.wwebjs_auth');
+  }
+
+  return path.resolve(process.cwd(), '.wwebjs_auth');
+}
+
+function buildPuppeteerConfig() {
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
+
+  return {
+    headless: process.env.PUPPETEER_HEADLESS === 'false' ? false : true,
+    executablePath: executablePath || undefined,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu',
+      '--disable-features=site-per-process,Translate,BackForwardCache',
+      '--disable-background-networking',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-extensions',
+      '--single-process',
+    ],
+  };
+}
 
 /**
  * Boot (or re-boot) the WhatsApp client.
@@ -22,21 +59,18 @@ function initializeClient(io) {
     return;
   }
 
+  const authPath = resolveAuthPath();
+  fs.mkdirSync(authPath, { recursive: true });
+
   whatsappClient = new Client({
-    authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
-    puppeteer: {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-      ],
-    },
+    authStrategy: new LocalAuth({ dataPath: authPath }),
+    puppeteer: buildPuppeteerConfig(),
   });
+
+  console.log(`[whatsapp] auth path → ${authPath}`);
+  if (process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN) {
+    console.log(`[whatsapp] browser path → ${process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN}`);
+  }
 
   // ── Events ────────────────────────────────────────────────────────────────
 
@@ -115,6 +149,7 @@ function initializeClient(io) {
   clientStatus = 'connecting';
   whatsappClient.initialize().catch((err) => {
     console.error('[whatsapp] initialize error –', err.message);
+    if (err?.stack) console.error(err.stack);
     clientStatus   = 'disconnected';
     whatsappClient = null;
     _io && _io.emit('status', { status: 'disconnected', message: `Failed to start: ${err.message}` });

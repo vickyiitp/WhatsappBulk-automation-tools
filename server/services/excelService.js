@@ -5,6 +5,22 @@ const XLSX = require('xlsx');
 // Dangerous prototype keys – reject any row that contains them (GHSA-4r6h-8v6p-xvw6 mitigation)
 const PROTO_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
+function normalizePhone(rawPhone) {
+  const digits = String(rawPhone || '').replace(/\D/g, '');
+  const cc = String(process.env.DEFAULT_COUNTRY_CODE || '').replace(/\D/g, '');
+
+  if (!digits) return '';
+
+  // If user uploaded local numbers and a default country code is configured,
+  // expand them to full international format.
+  if (cc) {
+    if (digits.length === 10) return `${cc}${digits}`;
+    if (digits.length === 11 && digits.startsWith('0')) return `${cc}${digits.slice(1)}`;
+  }
+
+  return digits;
+}
+
 /**
  * Parse an Excel (.xlsx / .xls) or CSV file and return a list of contacts.
  * Expected columns (case-insensitive): Name, Phone / PhoneNumber / Mobile / Number
@@ -42,8 +58,7 @@ function parseExcel(filePath) {
     if (!rawName || !rawPhone) continue;
 
     const name  = rawName.toString().trim();
-    // Strip every non-digit character to produce a clean E.164-like number
-    const phone = rawPhone.toString().replace(/\D/g, '');
+    const phone = normalizePhone(rawPhone);
 
     // Minimum 10 digits, maximum 15 (international standard)
     if (phone.length < 10 || phone.length > 15) continue;
