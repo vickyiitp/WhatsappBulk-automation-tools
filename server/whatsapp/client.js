@@ -1,6 +1,7 @@
 'use strict';
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const qrcode = require('qrcode');
@@ -45,8 +46,34 @@ function resolveExecutablePath() {
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
+function ensureBrowserAvailable() {
+  const existingPath = resolveExecutablePath();
+  if (existingPath) return existingPath;
+
+  if (!process.env.RENDER) return undefined;
+
+  const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
+  process.env.PUPPETEER_CACHE_DIR = cacheDir;
+
+  console.log(`[whatsapp] browser missing, attempting Chrome install in ${cacheDir}`);
+
+  try {
+    execSync('npx puppeteer browsers install chrome', {
+      stdio: 'inherit',
+      env: process.env,
+    });
+
+    const installedPath = resolveExecutablePath();
+    if (installedPath) return installedPath;
+  } catch (err) {
+    console.error('[whatsapp] chrome install error –', err.message);
+  }
+
+  return undefined;
+}
+
 function buildPuppeteerConfig() {
-  const executablePath = resolveExecutablePath();
+  const executablePath = ensureBrowserAvailable();
 
   return {
     headless: process.env.PUPPETEER_HEADLESS === 'false' ? false : true,
