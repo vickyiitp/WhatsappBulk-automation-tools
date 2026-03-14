@@ -6,6 +6,10 @@ const fs = require('fs');
 const path = require('path');
 const qrcode = require('qrcode');
 
+if (process.env.RENDER) {
+  process.env.PUPPETEER_CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
+}
+
 let whatsappClient  = null;
 let clientStatus    = 'disconnected'; // disconnected | connecting | qr_ready | pairing_ready | connected
 let qrCodeDataURL   = null;
@@ -84,7 +88,7 @@ function ensureBrowserAvailable() {
 
   if (!process.env.RENDER) return undefined;
 
-  const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
+  const cacheDir = process.env.PUPPETEER_CACHE_DIR;
   process.env.PUPPETEER_CACHE_DIR = cacheDir;
 
   console.log(`[whatsapp] browser missing, attempting Chrome install in ${cacheDir}`);
