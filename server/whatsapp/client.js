@@ -127,7 +127,8 @@ function buildPuppeteerConfig() {
       '--disable-background-timer-throttling',
       '--disable-renderer-backgrounding',
       '--disable-extensions',
-      '--single-process',
+      '--mute-audio',
+      '--disable-dev-tools'
     ],
   };
 }
@@ -240,6 +241,14 @@ function initializeClient(io) {
     whatsappClient = null;
     clearWhatsAppStorage();
     _io && _io.emit('status', { status: 'disconnected', message: 'WhatsApp disconnected.' });
+  });
+
+  whatsappClient.on('error', (err) => {
+    console.error('[whatsapp] client internal error –', err);
+    if (_io) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      _io.emit('sending_error', { error: `[WHATSAPP INTERNAL ERROR] ${errMsg}` });
+    }
   });
 
   // ── Boot ──────────────────────────────────────────────────────────────────

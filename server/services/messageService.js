@@ -72,81 +72,90 @@ function pushResult(entry) {
  * @param {number} maxDelay   Max milliseconds between messages (default 10 000).
  */
 async function startSending(contacts, template, io, minDelay = 5000, maxDelay = 10000) {
-  if (state.isRunning) throw new Error('A send job is already in progress.');
+  try {
+    if (state.isRunning) throw new Error('A send job is already in progress.');
 
-  const client = getClient();
-  if (!client)  throw new Error('WhatsApp is not connected. Please scan the QR code first.');
+    const client = getClient();
+    if (!client)  throw new Error('WhatsApp is not connected. Please scan the QR code first.');
 
-  // Reset counters (keep sentNumbers to prevent re-sends in the same server session)
-  state.isRunning = true;
-  state.total     = contacts.length;
-  state.sent      = 0;
-  state.failed    = 0;
-  state.skipped   = 0;
-  state.results   = [];
+    // Reset counters (keep sentNumbers to prevent re-sends in the same server session)
+    state.isRunning = true;
+    state.total     = contacts.length;
+    state.sent      = 0;
+    state.failed    = 0;
+    state.skipped   = 0;
+    state.results   = [];
 
-  io.emit('sending_started', { total: contacts.length });
+    io.emit('sending_started', { total: contacts.length });
 
-  for (let i = 0; i < contacts.length; i++) {
-    if (!state.isRunning) {
-      io.emit('sending_stopped', {
-        sent: state.sent, failed: state.failed, skipped: state.skipped,
-      });
-      break;
-    }
-
-    const contact = contacts[i];
-
-    // ── Duplicate guard ──────────────────────────────────────────────────────
-    if (state.sentNumbers.has(contact.phone)) {
-      state.skipped++;
-      pushResult({ name: contact.name, phone: contact.phone, status: 'skipped', reason: 'Already sent this session' });
-      io.emit('progress', buildProgress(i + 1, contact, 'skipped', 'Already sent this session'));
-      continue;
-    }
-
-    // ── Send ─────────────────────────────────────────────────────────────────
-    try {
-      const chatId  = `${contact.phone}@c.us`;
-      const message = personalise(template, contact.name);
-
-      const waNumber = await client.getNumberId(contact.phone);
-      if (!waNumber?._serialized) {
-        throw new Error('Number is not registered on WhatsApp');
+    for (let i = 0; i < contacts.length; i++) {
+      if (!state.isRunning) {
+        io.emit('sending_stopped', {
+          sent: state.sent, failed: state.failed, skipped: state.skipped,
+        });
+        break;
       }
 
-      await sendWithRetry(client, chatId, message);
+      const contact = contacts[i];
 
-      state.sent++;
-      state.sentNumbers.add(contact.phone);
-      pushResult({ name: contact.name, phone: contact.phone, status: 'success' });
-      io.emit('progress', buildProgress(i + 1, contact, 'success'));
+      // ── Duplicate guard ──────────────────────────────────────────────────────
+      if (state.sentNumbers.has(contact.phone)) {
+        state.skipped++;
+        pushResult({ name: contact.name, phone: contact.phone, status: 'skipped', reason: 'Already sent this session' });
+        io.emit('progress', buildProgress(i + 1, contact, 'skipped', 'Already sent this session'));
+        continue;
+      }
 
-      console.log(`[send] ✓  ${contact.name} (${contact.phone})`);
-    } catch (err) {
-      state.failed++;
-      pushResult({ name: contact.name, phone: contact.phone, status: 'failed', reason: err.message });
-      io.emit('progress', buildProgress(i + 1, contact, 'failed', err.message));
-      console.warn(`[send] ✗  ${contact.name} (${contact.phone}) → ${err.message}`);
+      // ── Send ─────────────────────────────────────────────────────────────────
+      try {
+        const chatId  = `${contact.phone}@c.us`;
+        const message = personalise(template, contact.name);
+
+        const waNumber = await client.getNumberId(contact.phone);
+        if (!waNumber?._serialized) {
+          throw new Error('Number is not registered on WhatsApp');
+        }
+
+        await sendWithRetry(client, chatId, message);
+
+        state.sent++;
+        state.sentNumbers.add(contact.phone);
+        pushResult({ name: contact.name, phone: contact.phone, status: 'success' });
+        io.emit('progress', buildProgress(i + 1, contact, 'success'));
+
+        console.log(`[send] ✓  ${contact.name} (${contact.phone})`);
+      } catch (err) {
+        state.failed++;
+        const errMsg = err instanceof Error ? err.message : String(err);
+        pushResult({ name: contact.name, phone: contact.phone, status: 'failed', reason: errMsg });
+        io.emit('progress', buildProgress(i + 1, contact, 'failed', errMsg));
+        console.warn(`[send] ✗  ${contact.name} (${contact.phone}) → ${errMsg}`);
+      }
+
+      // ── Inter-message delay (skip after last contact) ─────────────────────
+      if (i < contacts.length - 1 && state.isRunning) {
+        const wait    = randomDelay(minDelay, maxDelay);
+        const nextName = contacts[i + 1]?.name ?? '';
+        io.emit('waiting', { seconds: Math.round(wait / 1000), next: nextName });
+        await delay(wait);
+      }
     }
 
-    // ── Inter-message delay (skip after last contact) ─────────────────────
-    if (i < contacts.length - 1 && state.isRunning) {
-      const wait    = randomDelay(minDelay, maxDelay);
-      const nextName = contacts[i + 1]?.name ?? '';
-      io.emit('waiting', { seconds: Math.round(wait / 1000), next: nextName });
-      await delay(wait);
-    }
+    state.isRunning = false;
+    io.emit('sending_complete', {
+      total:   state.total,
+      sent:    state.sent,
+      failed:  state.failed,
+      skipped: state.skipped,
+      results: state.results,
+    });
+  } catch (fatalErr) {
+    state.isRunning = false;
+    const errMsg = fatalErr instanceof Error ? fatalErr.message : String(fatalErr);
+    console.error('[messages] Fatal error in startSending:', fatalErr);
+    io.emit('sending_error', { error: errMsg });
+    throw fatalErr; // Re-throw so the caller can also catch it if needed
   }
-
-  state.isRunning = false;
-  io.emit('sending_complete', {
-    total:   state.total,
-    sent:    state.sent,
-    failed:  state.failed,
-    skipped: state.skipped,
-    results: state.results,
-  });
 }
 
 function buildProgress(current, contact, status, reason) {

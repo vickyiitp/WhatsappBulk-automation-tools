@@ -53,6 +53,24 @@ io.on('connection', (socket) => {
   });
 });
 
+// ── Render Crash Prevention & Debugging ───────────────────────────────────────
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[process] Unhandled Rejection at:', promise, 'reason:', reason);
+  const errMsg = reason instanceof Error ? reason.message : String(reason);
+  if (app.locals.io) {
+    app.locals.io.emit('sending_error', { error: `[SERVER CRASH PREVENTED] Unhandled Rejection: ${errMsg}` });
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[process] Uncaught Exception:', err);
+  if (app.locals.io) {
+    app.locals.io.emit('sending_error', { error: `[SERVER CRASH PREVENTED] Uncaught Exception: ${err.message}` });
+  }
+  // Let the process survive or restart depending on the environment.
+  // We don't exit here so the user can see the error on the frontend.
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
@@ -60,4 +78,18 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  WhatsApp Bulk Messenger`);
   console.log(`  http://localhost:${PORT}`);
   console.log('======================================\n');
+  
+  // ── Keep Awake for Render Free Tier ──────────────────────────────────────────
+  if (process.env.RENDER_EXTERNAL_URL) {
+    const KEEP_AWAKE_INTERVAL = 14 * 60 * 1000; // 14 minutes
+    console.log(`[keep-awake] Enabled for ${process.env.RENDER_EXTERNAL_URL}`);
+    setInterval(() => {
+      const httpModule = process.env.RENDER_EXTERNAL_URL.startsWith('https') ? require('https') : require('http');
+      httpModule.get(process.env.RENDER_EXTERNAL_URL, (res) => {
+        console.log(`[keep-awake] Pinged self -> Status: ${res.statusCode}`);
+      }).on('error', (err) => {
+        console.error('[keep-awake] Error pinging self:', err.message);
+      });
+    }, KEEP_AWAKE_INTERVAL);
+  }
 });

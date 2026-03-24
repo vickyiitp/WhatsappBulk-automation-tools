@@ -48,8 +48,18 @@ router.post('/connect-phone', (req, res) => {
 // POST /api/whatsapp/disconnect
 router.post('/disconnect', async (_req, res) => {
   try {
+    await destroyClient({ clearSession: false });
+    res.json({ message: 'Disconnected but session preserved' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/whatsapp/logout
+router.post('/logout', async (_req, res) => {
+  try {
     await destroyClient({ clearSession: true });
-    res.json({ message: 'Disconnected and session cleared' });
+    res.json({ message: 'Logged out and session cleared' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

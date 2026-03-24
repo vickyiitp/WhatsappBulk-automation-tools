@@ -50,6 +50,7 @@ function handleWhatsAppStatus({ status, message }) {
   const conningMsg  = document.getElementById('connectingMsg');
   const btnConnect  = document.getElementById('btnConnect');
   const btnDisconn  = document.getElementById('btnDisconnect');
+  const btnLogout   = document.getElementById('btnLogout');
 
   // Reset visibility
   qrSection.classList.add('hidden');
@@ -62,18 +63,21 @@ function handleWhatsAppStatus({ status, message }) {
     connSec.classList.remove('hidden');
     btnConnect.classList.add('hidden');
     btnDisconn.classList.remove('hidden');
+    btnLogout.classList.remove('hidden');
     document.getElementById('pairingCodeBox').classList.add('hidden');
   } else if (status === 'pairing_ready') {
     badge.textContent = 'Enter Code';
     badge.className   = 'badge badge--qr';
     btnConnect.classList.add('hidden');
     btnDisconn.classList.remove('hidden');
+    btnLogout.classList.add('hidden');
   } else if (status === 'qr_ready') {
     badge.textContent = 'Scan QR';
     badge.className   = 'badge badge--qr';
     qrSection.classList.remove('hidden');
     btnConnect.classList.add('hidden');
     btnDisconn.classList.remove('hidden');
+    btnLogout.classList.add('hidden');
   } else if (status === 'connecting') {
     badge.textContent = 'Connecting';
     badge.className   = 'badge badge--connecting';
@@ -81,12 +85,14 @@ function handleWhatsAppStatus({ status, message }) {
     if (message) conningMsg.textContent = message;
     btnConnect.classList.add('hidden');
     btnDisconn.classList.add('hidden');
+    btnLogout.classList.add('hidden');
   } else {
     // disconnected
     badge.textContent = 'Disconnected';
     badge.className   = 'badge badge--disconnected';
     btnConnect.classList.remove('hidden');
     btnDisconn.classList.add('hidden');
+    btnLogout.classList.add('hidden');
     document.getElementById('pairingCodeBox').classList.add('hidden');
   }
 }
@@ -156,9 +162,19 @@ function handlePairingCode({ code, error }) {
 }
 
 async function disconnectWhatsApp() {
-  if (!confirm('Disconnect WhatsApp? You will need to scan QR again next time.')) return;
+  if (!confirm('Pause service? This stops the underlying WhatsApp client but keeps you logged in.')) return;
   try {
     await apiFetch('/api/whatsapp/disconnect', 'POST');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function logoutWhatsApp() {
+  if (!confirm('Log out from WhatsApp? This will clear your session and you will need to scan the QR code next time.')) return;
+  try {
+    await apiFetch('/api/whatsapp/logout', 'POST');
+    toast('Logged out successfully', 'success');
   } catch (e) {
     toast(e.message, 'error');
   }
