@@ -114,6 +114,7 @@ function buildPuppeteerConfig() {
   return {
     headless: process.env.PUPPETEER_HEADLESS === 'false' ? false : true,
     executablePath: executablePath || undefined,
+    timeout: 120000, // 2 minutes to launch browser on slow environments
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -127,8 +128,7 @@ function buildPuppeteerConfig() {
       '--disable-background-timer-throttling',
       '--disable-renderer-backgrounding',
       '--disable-extensions',
-      '--mute-audio',
-      '--disable-dev-tools'
+      '--mute-audio'
     ],
   };
 }
@@ -160,6 +160,8 @@ function initializeClient(io) {
 
   whatsappClient = new Client({
     authStrategy: new LocalAuth({ dataPath: authPath }),
+    authTimeoutMs: 120000,
+    qrMaxRetries: 5,
     webVersionCache: {
       type: 'local',
       path: path.join(cachePath, 'web-version-cache.html'),
